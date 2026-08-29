@@ -9,6 +9,7 @@ import urllib.error
 import time
 import urllib.parse
 from pathlib import Path
+import shutil
 from colorama import Fore, Style, init
 
 init(autoreset=True)
@@ -57,6 +58,65 @@ def get_system_info():
         'is_macos': system == 'darwin',
         'system_name': system
     }
+
+def prompt_install_wine(min_version="7.0"):
+    """Prompt the user to install Wine and attempt automatic installation on common distros.
+    Returns True if Wine is detected/installed after the attempt, False otherwise.
+    """
+    sys_info = get_system_info()
+    if sys_info['is_windows']:
+        return False
+
+    print(Fore.RED + "[!] Wine is not installed!")
+    choice = input(Fore.WHITE + "Wine is not installed. Install it from here? (y/N): ").strip().lower()
+    if choice != 'y':
+        return False
+
+    pm = None
+    install_cmd = None
+    if shutil.which("apt") or shutil.which("apt-get"):
+        pm = "apt"
+        install_cmd = ["sudo", "apt", "install", "-y", "wine64"]
+    elif shutil.which("dnf"):
+        pm = "dnf"
+        install_cmd = ["sudo", "dnf", "install", "-y", "wine"]
+    elif shutil.which("yum"):
+        pm = "yum"
+        install_cmd = ["sudo", "yum", "install", "-y", "wine"]
+    elif shutil.which("pacman"):
+        pm = "pacman"
+        install_cmd = ["sudo", "pacman", "-Syu", "--noconfirm", "wine"]
+    elif shutil.which("zypper"):
+        pm = "zypper"
+        install_cmd = ["sudo", "zypper", "install", "-y", "wine"]
+    elif shutil.which("apk"):
+        pm = "apk"
+        install_cmd = ["sudo", "apk", "add", "wine"]
+    else:
+        print(Fore.YELLOW + "[!] Could not detect package manager. Opening WineHQ install page.")
+        try:
+            subprocess.run(["xdg-open", "https://wiki.winehq.org/Download"], check=False)
+        except Exception:
+            pass
+        return False
+
+    print(Fore.CYAN + f"[*] Installing Wine using {pm} (this may request your sudo password)...")
+    try:
+        subprocess.run(install_cmd, check=True)
+        print(Fore.GREEN + "[*] Wine installation command executed. Verifying...")
+        time.sleep(2)
+        for wine_binary in ["wine64", "wine"]:
+            try:
+                out = subprocess.check_output([wine_binary, "--version"], stderr=subprocess.DEVNULL).decode().strip()
+                print(Fore.GREEN + f"[*] Wine installed: {out}")
+                return True
+            except Exception:
+                continue
+        print(Fore.YELLOW + "[!] Wine install command finished but Wine not found in PATH.")
+        return False
+    except Exception as e:
+        print(Fore.RED + f"[!] Failed to install Wine: {e}")
+        return False
 
 def show_linux_disclaimer():
     """Show Linux experimental support disclaimer with 5 second timer"""
@@ -321,7 +381,25 @@ def handle_uri_launch(uri):
             break
         except:
             continue
-    
+
+    if not wine_cmd:
+        # Prompt the user to install Wine automatically where possible
+        installed = False
+        try:
+            installed = prompt_install_wine()
+        except Exception:
+            installed = False
+
+        if installed:
+            for wine_binary in ["wine64", "wine"]:
+                try:
+                    subprocess.check_output([wine_binary, "--version"], stderr=subprocess.DEVNULL)
+                    wine_cmd = wine_binary
+                    print(Fore.GREEN + f"[*] Using {wine_binary}")
+                    break
+                except:
+                    continue
+
     if not wine_cmd:
         print(Fore.RED + "[!] Wine is not installed!")
         print(Fore.YELLOW + "Please install Wine and try again.")
@@ -537,12 +615,34 @@ def launch_bootstrapper():
                     "__GLX_VENDOR_LIBRARY_NAME": "nvidia",
                 })
             
-            wine_cmd = "wine64"
-            try:
-                subprocess.check_output([wine_cmd, "--version"], stderr=subprocess.DEVNULL)
-            except Exception:
-                wine_cmd = "wine"
-            
+            # Detect Wine binary, prompting to install if missing
+            wine_cmd = None
+            for wine_binary in ["wine64", "wine"]:
+                try:
+                    subprocess.check_output([wine_binary, "--version"], stderr=subprocess.DEVNULL)
+                    wine_cmd = wine_binary
+                    break
+                except:
+                    continue
+
+            if not wine_cmd:
+                try:
+                    installed = prompt_install_wine()
+                except Exception:
+                    installed = False
+                if installed:
+                    for wine_binary in ["wine64", "wine"]:
+                        try:
+                            subprocess.check_output([wine_binary, "--version"], stderr=subprocess.DEVNULL)
+                            wine_cmd = wine_binary
+                            break
+                        except:
+                            continue
+
+            if not wine_cmd:
+                print(Fore.RED + "[!] Wine is not installed - cannot launch bootstrapper")
+                return
+
             subprocess.Popen([wine_cmd, BOOTSTRAPPER_FILE], env=env)
         
         print(Fore.GREEN + "[*] Bootstrapper launched successfully!")
