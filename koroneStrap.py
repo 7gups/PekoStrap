@@ -15,7 +15,7 @@ from colorama import Fore, Style, init
 init(autoreset=True)
 VERSION = "1.1.2-github"
 FASTFLAGS_FILE = "fastFlags.json"
-BOOTSTRAPPER_URL = "https://setup.pekora.zip/PekoraPlayerLauncher.exe"
+BOOTSTRAPPER_URL = "https://pekora.pro/bootstrapper/PekoraPlayerLauncher.exe"
 BOOTSTRAPPER_FILE = "PekoraPlayerLauncher.exe"
 
 # Linux-specific constants
