@@ -434,55 +434,60 @@ def handle_uri_launch(uri):
         print(Fore.RED + f"[!] Failed to launch client: {e}")
         sys.exit(1)
 
+# The real on-disk layout is flat: <root>\clients\<year>\RobloxPlayerBeta.exe
+# (no per-install version-hash folder, and the exe isn't named ProjectXPlayerBeta.exe).
+# This maps the internal version keys used by the menu/URI handler to the actual
+# folder name found on disk.
+FOLDER_NAME_MAP = {
+    "2020L": "2020",
+    "2021M": "2021",
+}
+
 def get_version_roots():
+    """Returns 'clients' root folders to search (each directly contains year subfolders)."""
     sys_info = get_system_info()
     roots = []
     if sys_info['is_windows']:
         roots.extend([
-            os.path.expandvars(r"%localappdata%\ProjectX\Versions"),
-            os.path.expandvars(r"%localappdata%\Pekora\Versions"),
+            os.path.expandvars(r"%localappdata%\Pekora\clients"),
+            os.path.expandvars(r"%localappdata%\ProjectX\clients"),
         ])
     elif sys_info['is_linux']:
         user = os.getenv('USER', 'user')
         roots.extend([
-            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/ProjectX/Versions"),
-            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/Pekora/Versions"),
-            os.path.expanduser(f"~/.local/share/wineprefixes/pekora/drive_c/users/{user}/AppData/Local/Pekora/Versions"),
-            os.path.expanduser(f"~/.local/share/wineprefixes/projectx/drive_c/users/{user}/AppData/Local/ProjectX/Versions"),
+            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/Pekora/clients"),
+            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/ProjectX/clients"),
+            os.path.expanduser(f"~/.local/share/wineprefixes/pekora/drive_c/users/{user}/AppData/Local/Pekora/clients"),
+            os.path.expanduser(f"~/.local/share/wineprefixes/projectx/drive_c/users/{user}/AppData/Local/ProjectX/clients"),
         ])
     elif sys_info['is_macos']:
         user = os.getenv('USER', 'user')
         roots.extend([
-            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/ProjectX/Versions"),
-            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/Pekora/Versions"),
+            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/Pekora/clients"),
+            os.path.expanduser(f"~/.wine/drive_c/users/{user}/AppData/Local/ProjectX/clients"),
         ])
-        roots.extend(glob.glob(os.path.expanduser(f"~/Library/Application Support/CrossOver/Bottles/*/drive_c/users/{user}/AppData/Local/ProjectX/Versions")))
-        roots.extend(glob.glob(os.path.expanduser(f"~/Library/Application Support/CrossOver/Bottles/*/drive_c/users/{user}/AppData/Local/Pekora/Versions")))
+        roots.extend(glob.glob(os.path.expanduser(f"~/Library/Application Support/CrossOver/Bottles/*/drive_c/users/{user}/AppData/Local/Pekora/clients")))
+        roots.extend(glob.glob(os.path.expanduser(f"~/Library/Application Support/CrossOver/Bottles/*/drive_c/users/{user}/AppData/Local/ProjectX/clients")))
     return [p for p in roots if isinstance(p, str)]
-
-def iter_version_dirs():
-    for root in get_version_roots():
-        if os.path.isdir(root):
-            for d in sorted(glob.glob(os.path.join(root, "*"))):
-                if os.path.isdir(d):
-                    yield d
 
 def get_clientsettings_targets():
     targets = []
-    for ver in iter_version_dirs():
-        for folder in ["2020L", "2021M"]:
-            folder_path = os.path.join(ver, folder)
+    for root in get_version_roots():
+        for folder_key, disk_folder in FOLDER_NAME_MAP.items():
+            folder_path = os.path.join(root, disk_folder)
             if os.path.isdir(folder_path):
                 client_dir = os.path.join(folder_path, "ClientSettings")
                 settings_path = os.path.join(client_dir, "ClientAppSettings.json")
-                targets.append((client_dir, settings_path, folder))
+                targets.append((client_dir, settings_path, folder_key))
     return targets
 
 def get_executable_paths(folder):
+    """folder is the internal key (e.g. '2021M'); resolves to the real on-disk folder name."""
+    disk_folder = FOLDER_NAME_MAP.get(folder, folder)
     paths = []
-    for ver in iter_version_dirs():
-        exe = os.path.join(ver, folder, "ProjectXPlayerBeta.exe")
-        paths.append(exe)
+    for root in get_version_roots():
+        paths.append(os.path.join(root, disk_folder, "RobloxPlayerBeta.exe"))
+        paths.append(os.path.join(root, disk_folder, "ProjectXPlayerBeta.exe"))
     return paths
 
 def load_fastflags():
@@ -805,7 +810,7 @@ def debug():
             print(Fore.GREEN + f"  ✓ Found: {root}")
             versions = [d for d in glob.glob(os.path.join(root, "*")) if os.path.isdir(d)]
             for version in versions:
-                print(Fore.YELLOW + f"    - Version: {os.path.basename(version)}")
+                print(Fore.YELLOW + f"    - Found: {os.path.basename(version)}")
         else:
             print(Fore.RED + f"  ✗ Not found: {root}")
     print(Fore.CYAN + f"\nClientSettings status:")
@@ -1085,4 +1090,3 @@ if __name__ == "__main__":
     
     # Run main menu ONLY if no arguments provided
     main_menu()
-
